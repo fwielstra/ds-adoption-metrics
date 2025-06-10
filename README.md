@@ -8,13 +8,18 @@ There should be two sets of queries, one for the 'existing' components that CRNT
 
 - [x] Project setup
 - sqlite database OR logfiles
-- connect with Gitlab API
+- [x] connect with Gitlab API
   - https://docs.gitlab.com/api/search/
 - define queries
   - just hardcode, it's not hard
   - unique name & query
 - extract data; number of results, output clickable links
+- lookup project names by ID
+- output basic stats on commandline:
+ - total results
+ - results per project
 - generate charts?
+- generate "adoption" output; pair of queries (old & new), compare 'oldest' results with 'newest' and calculate "conversion percentage".
 
 ## Getting started
 

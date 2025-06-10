@@ -33,20 +33,44 @@ func main() {
 		privateToken: privateToken,
 	}
 
-	crntButtonQuery := SearchQuery{
-		search:    "crnt-button",
-		extension: "html",
-	}
-
-	resp, err := client.Search(crntButtonQuery)
+	// get list of project IDs and names
+	projects, err := client.GetProjects()
 	if err != nil {
-		log.Print(err)
+		log.Printf("error fetching projects: %w", err)
 	}
 
-	for _, res := range resp {
-		PrintJSON(res)
-	}
+	PrintJSON(projects)
+
+	// TODO: create table, load projects; do not reload projects unless explicitly told to.
+
+	// queries := []SearchQuery{
+	// 	{
+	// 		name:      "bootstrap-primary-button",
+	// 		search:    `class=\"btn btn-primary`,
+	// 		extension: "html",
+	// 	},
+	// }
+
+	// for _, q := range queries {
+	// 	resp, err := client.SearchAll(q)
+
+	// 	if err != nil {
+	// 		log.Print(err)
+	// 	}
+
+	// 	total := len(resp)
+	// 	grouped := make(map[ProjectID]int)
+
+	// 	for _, res := range resp {
+	// 		// PrintJSON(res)
+	// 		grouped[res.ProjectId] += 1
+	// 	}
+
+	// 	log.Printf("total %d, per group %#v", total, grouped)
+	// }
 }
+
+type ProjectID = int
 
 func PrintJSON(obj interface{}) {
 	bytes, _ := json.MarshalIndent(obj, "\t", "\t")
