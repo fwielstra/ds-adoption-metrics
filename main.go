@@ -1,11 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 
 	"database/sql"
@@ -35,12 +33,24 @@ func main() {
 		privateToken: privateToken,
 	}
 
-	resp, err := client.Search()
+	crntButtonQuery := SearchQuery{
+		search:    "crnt-button",
+		extension: "html",
+	}
+
+	resp, err := client.Search(crntButtonQuery)
 	if err != nil {
 		log.Print(err)
 	}
 
-	fmt.Print(resp)
+	for _, res := range resp {
+		PrintJSON(res)
+	}
+}
+
+func PrintJSON(obj interface{}) {
+	bytes, _ := json.MarshalIndent(obj, "\t", "\t")
+	fmt.Println(string(bytes))
 }
 
 func createDatabase() (*sql.DB, error) {
@@ -51,40 +61,4 @@ func createDatabase() (*sql.DB, error) {
 	}
 
 	return db, nil
-}
-
-type GitlabClient struct {
-	privateToken string
-}
-
-func (c *GitlabClient) Request(method string, path string, body io.Reader) (*http.Response, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest(method, path, body)
-	if err != nil {
-		return nil, fmt.Errorf("error querying Gitlab: %w", err)
-	}
-	req.Header.Add("PRIVATE-TOKEN", c.privateToken)
-	return client.Do(req)
-}
-
-func (c *GitlabClient) Get(path string) (*http.Response, error) {
-	return c.Request("GET", path, nil)
-}
-
-func (c *GitlabClient) Search() (string, error) {
-	search := url.QueryEscape("crnt-button extension:html")
-	resp, err := c.Get("https://gitlab.essent.nl/api/v4/search?scope=blobs&search=" + search)
-
-	if err != nil {
-		return "", fmt.Errorf("error searching gitlab: %w", err)
-	}
-
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-
-	if err != nil {
-		return "", fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return string(body), nil
 }
