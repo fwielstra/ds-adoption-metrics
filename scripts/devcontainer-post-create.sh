@@ -8,3 +8,6 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 ./install-just.sh --to $(go env GOPATH)/bin
 ./install-golangci-lint.sh -b $(go env GOPATH)/bin v2.1.5
+
+sudo apt update && sudo apt upgrade
+sudo apt install sqlite3

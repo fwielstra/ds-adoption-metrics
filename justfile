@@ -1,8 +1,10 @@
+set positional-arguments
+
 build: binfolder
   go build -o bin ./...
 
-run: build
-  ./bin/crntmetrics
+run *args='': build
+  ./bin/crntmetrics $@
 
 watch:
   watchexec --exts go --ignore bin just run
