@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"slices"
+	"strconv"
 
 	"database/sql"
 
@@ -27,7 +28,7 @@ var verbose bool
 
 type gitlabClient interface {
 	ListProjects(client *gitlab.Client)
-	SearchCode(client *gitlab.Client, query domain.SearchQuery) (domain.SearchResult, error)
+	SearchCode(client *gitlab.Client, query string) (domain.SearchResult, error)
 }
 
 type gitlabLogger struct {
@@ -35,6 +36,11 @@ type gitlabLogger struct {
 
 func (c *gitlabLogger) Printf(format string, v ...interface{}) {
 	log.Printf(format, v...)
+}
+
+// We could fetch a list of projects from gitlab but lazy.
+var projectNames = map[int]string{
+	62: "Sitecore plus / Frontend",
 }
 
 func main() {
@@ -88,6 +94,11 @@ func main() {
 		log.Fatalf("Failed to create gitlab client: %v", err)
 	}
 
+	search := &glclient.Search{
+		Client:  client,
+		Verbose: verbose,
+	}
+
 	// if reset {
 	// 	// TODO: change so it only fetches the projects found in search results.
 	// 	log.Println("fetching projects and loading into database")
@@ -118,21 +129,26 @@ func main() {
 		{
 			Name:      "primary-button",
 			ProjectID: 62, // sitecore plus
-			Old: domain.SearchQuery{
-				Query:     `class=\"btn btn-primary`,
-				Extension: "html",
-			},
-			Crnt: domain.SearchQuery{
-				Query:     `variant\"primary\"`,
-				Extension: "html",
-			},
+			Old:       `class=\"btn btn-primary extension:html`,
+			Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"primary\" extension:html`,
+		},
+		{
+			Name:      "secondary-button",
+			ProjectID: 62,                                           // sitecore plus
+			Old:       `class=\""btn btn-secondary" extension:html`, // note that there is one use case where the button type is dynamic
+			Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"secondary\" extension:html`,
+		},
+		{
+			Name:      "tertiary-button",
+			ProjectID: 62, // sitecore plus
+			Old:       `class=\""btn btn-link" extension:html`,
+			Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"tertiary\" extension:html`,
 		},
 	}
 
 	type resultRow struct {
 		projectId   int
-		oldQuery    string
-		crntQuery   string
+		query       string
 		oldResults  int
 		crntResults int
 	}
@@ -143,16 +159,16 @@ func main() {
 	// Rate limiting is also supported in the gitlab client; consider making it configurable / a CLI argument and enable it at night (when there will be few code changes)
 	for i, qp := range queryPairs {
 
-		oldResults, err1 := glclient.SearchCodeByProject(client, qp.Old, qp.ProjectID)
-		crntResults, err2 := glclient.SearchCodeByProject(client, qp.Crnt, qp.ProjectID)
+		oldResults, err1 := search.SearchCodeByProject(qp.Old, qp.ProjectID)
+		crntResults, err2 := search.SearchCodeByProject(qp.Crnt, qp.ProjectID)
 
 		if err := cmp.Or(err1, err2); err != nil {
 			log.Fatalf("error querying code %v", err)
 		}
+
 		results[i] = resultRow{
 			projectId:   qp.ProjectID,
-			oldQuery:    qp.Old.String(),
-			crntQuery:   qp.Crnt.String(),
+			query:       qp.Name,
 			oldResults:  len(oldResults),
 			crntResults: len(crntResults),
 		}
@@ -160,10 +176,14 @@ func main() {
 
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
-	t.AppendHeader(table.Row{"PID", "Old query", "CRNT query", "Old count", "CRNT count"})
+	t.AppendHeader(table.Row{"Project", "Query", "Old count", "CRNT count"})
 
 	for _, row := range results {
-		t.AppendRow(table.Row{row.projectId, row.oldQuery, row.crntQuery, row.oldResults, row.crntResults})
+		projectName, exists := projectNames[row.projectId]
+		if !exists {
+			projectName = strconv.Itoa(row.projectId)
+		}
+		t.AppendRow(table.Row{projectName, row.query, row.oldResults, row.crntResults})
 	}
 	t.Render()
 }
