@@ -13,6 +13,7 @@ type Search struct {
 	Verbose bool
 }
 
+// TODO: if we only want the count we don't need to query all pages if we already limit to 1 project. But we'll want to search multiple projects eventually.
 func (s *Search) SearchCodeByProject(query string, projectID int) ([]*domain.SearchResult, error) {
 	opts := &gitlab.SearchOptions{}
 

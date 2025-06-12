@@ -144,6 +144,12 @@ func main() {
 			Old:       `class=\""btn btn-link" extension:html`,
 			Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"tertiary\" extension:html`,
 		},
+		{
+			Name:      "fa-icon",
+			ProjectID: 62, // sitecore plus
+			Old:       `"fa-icon" extension:html`,
+			Crnt:      `"<crnt-icon" -"crnt-icon-button" extension:html`,
+		},
 	}
 
 	type resultRow struct {
