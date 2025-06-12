@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"cmp"
 	"flag"
 	"fmt"
 	"log"
@@ -114,60 +114,58 @@ func main() {
 
 	type ProjectID = int
 
-	queries := []domain.SearchQuery{
+	queryPairs := []domain.QueryPair{
 		{
-			Name:      "bootstrap-primary-button",
-			Query:     `class=\"btn btn-primary`,
-			Extension: "html",
+			Name:      "primary-button",
 			ProjectID: 62, // sitecore plus
-		},
-		{
-			Name:      "crnt-primary-button",
-			Query:     `variant\"primary\"`,
-			Extension: "html",
-			ProjectID: 62,
+			Old: domain.SearchQuery{
+				Query:     `class=\"btn btn-primary`,
+				Extension: "html",
+			},
+			Crnt: domain.SearchQuery{
+				Query:     `variant\"primary\"`,
+				Extension: "html",
+			},
 		},
 	}
+
+	type resultRow struct {
+		projectId   int
+		oldQuery    string
+		crntQuery   string
+		oldResults  int
+		crntResults int
+	}
+
+	results := make([]resultRow, len(queryPairs))
 
 	// TODO: fan out concurrency and / or backoff / rate limiting.
 	// Rate limiting is also supported in the gitlab client; consider making it configurable / a CLI argument and enable it at night (when there will be few code changes)
-	for _, q := range queries {
+	for i, qp := range queryPairs {
 
-		results, err := glclient.SearchCode(client, q)
-		if err != nil {
+		oldResults, err1 := glclient.SearchCodeByProject(client, qp.Old, qp.ProjectID)
+		crntResults, err2 := glclient.SearchCodeByProject(client, qp.Crnt, qp.ProjectID)
+
+		if err := cmp.Or(err1, err2); err != nil {
 			log.Fatalf("error querying code %v", err)
 		}
-		total := len(results)
-		grouped := make(map[ProjectID]int)
-		for _, res := range results {
-			grouped[res.ProjectID] += 1
+		results[i] = resultRow{
+			projectId:   qp.ProjectID,
+			oldQuery:    qp.Old.String(),
+			crntQuery:   qp.Crnt.String(),
+			oldResults:  len(oldResults),
+			crntResults: len(crntResults),
 		}
-
-		log.Printf("results for query %s:", q)
-
-		t := table.NewWriter()
-		t.SetOutputMirror(os.Stdout)
-		t.AppendSeparator()
-		t.AppendHeader(table.Row{"PID", "Amount"})
-
-		for k, v := range grouped {
-			t.AppendRow(table.Row{k, v})
-		}
-		t.AppendSeparator()
-		t.AppendRow(table.Row{"Query name", q.Name})
-		t.AppendRow(table.Row{"Query:", q.Query})
-
-		t.AppendSeparator()
-		t.AppendFooter(table.Row{"Total", total})
-
-		// t.SetStyle(table.StyleColoredBright)
-		t.Render()
 	}
-}
 
-func PrintJSON(obj interface{}) {
-	bytes, _ := json.MarshalIndent(obj, "\t", "\t")
-	fmt.Println(string(bytes))
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"PID", "Old query", "CRNT query", "Old count", "CRNT count"})
+
+	for _, row := range results {
+		t.AppendRow(table.Row{row.projectId, row.oldQuery, row.crntQuery, row.oldResults, row.crntResults})
+	}
+	t.Render()
 }
 
 func createDatabase() (*sql.DB, error) {

@@ -9,11 +9,17 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
-func SearchCode(client *gitlab.Client, query domain.SearchQuery) ([]*domain.SearchResult, error) {
+func SearchCodeByProject(client *gitlab.Client, query domain.SearchQuery, projectID int) ([]*domain.SearchResult, error) {
 	opts := &gitlab.SearchOptions{}
 
+	queryString := query.Query
+
+	if query.Extension != "" {
+		queryString = fmt.Sprintf("%s extension:%s", queryString, query.Extension)
+	}
+
 	it, hasErr := gitlab.Scan(func(p gitlab.PaginationOptionFunc) ([]*domain.SearchResult, *gitlab.Response, error) {
-		blobs, resp, err := Search(client, query, opts, p)
+		blobs, resp, err := client.Search.BlobsByProject(projectID, queryString, opts, p)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -35,19 +41,4 @@ func SearchCode(client *gitlab.Client, query domain.SearchQuery) ([]*domain.Sear
 	}
 
 	return allResults, nil
-}
-
-func Search(client *gitlab.Client, query domain.SearchQuery, opts *gitlab.SearchOptions, p gitlab.PaginationOptionFunc) ([]*gitlab.Blob, *gitlab.Response, error) {
-	queryString := query.Query
-
-	if query.Extension != "" {
-		queryString = fmt.Sprintf("%s extension:%s", queryString, query.Extension)
-	}
-
-	fmt.Printf("pid: %d\n", query.ProjectID)
-	if query.ProjectID > 0 {
-		return client.Search.BlobsByProject(query.ProjectID, queryString, opts, p)
-	}
-
-	return client.Search.Blobs(queryString, opts, p)
 }
