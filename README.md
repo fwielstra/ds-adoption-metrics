@@ -10,7 +10,7 @@ This tool creates an sqlite database in `data/adoption.db`, then queries [the Gi
 
 It first fetches all projects to get a readable name, then runs a set of search queries to [find specific fragments of code](https://docs.gitlab.com/api/search/#scope-blobs).
 
-The main logic is contained in [`main.go`](./main.go); database specific logic is in the `sqlite` folder, and a gitlab service layer is contained in the `gitlab` folder.
+The main logic is contained in [`main.go`](./main.go); database specific logic is in the `sqlite` folder, and a gitlab service layer is contained in the `glclient` folder.
 
 ## TODO
 
@@ -24,21 +24,21 @@ The main logic is contained in [`main.go`](./main.go); database specific logic i
 - extract data; number of results, output clickable links
 - lookup project names by ID
 - output basic stats on commandline:
- - total results
- - results per project
+- total results
+- results per project
 - generate charts?
 - generate "adoption" output; pair of queries (old & new), compare 'oldest' results with 'newest' and calculate "conversion percentage".
 - Maintain database version, run migrations or just reset database and do a clean fetch
 - commandline commands for e.g. dropping projects cache
 - Properly structure application:
- - business and domain logic in top level defining client interfaces
- - gitlab service layer wrapping the gitlab library (domain <-> gitlab)
- - database layer wrapping database access / storage (domain <-> database)
- - ?? chart generating layer (domain -> visualisation)
- - should we do something with context? e.g. timeout and cancellation support
- - switch to using [the graphql api](https://docs.gitlab.com/api/graphql/) since we throw away a lot of data from the REST API.
-  - see [graphql-explorer](https://gitlab.essent.nl/-/graphql-explorer)
-  - We may get away with fetching all data (like projects) in one go then.
+- business and domain logic in top level defining client interfaces
+- gitlab service layer wrapping the gitlab library (domain <-> gitlab)
+- database layer wrapping database access / storage (domain <-> database)
+- ?? chart generating layer (domain -> visualisation)
+- should we do something with context? e.g. timeout and cancellation support
+- switch to using [the graphql api](https://docs.gitlab.com/api/graphql/) since we throw away a lot of data from the REST API.
+- see [graphql-explorer](https://gitlab.essent.nl/-/graphql-explorer)
+- We may get away with fetching all data (like projects) in one go then.
 
 ## Getting started
 
@@ -53,11 +53,19 @@ The main logic is contained in [`main.go`](./main.go); database specific logic i
 
 ## Running
 
+### Reading stored data
+
+The default command pulls data from the local database in `data/adoption.db` and outputs it as a table. To invoke it as developer, run:
+
+    just run
+
+### Updating data
+
 Generate a Gitlab access key with the `read_api` permissions from [your settings](https://gitlab.essent.nl/-/user_settings/personal_access_tokens).
 
 Either set this as an environment variable called `PRIVATE_TOKEN`, or pass it when invoking the `run` command:
 
-    PRIVATE_TOKEN=abcdefghijklmnop just run
+    PRIVATE_TOKEN=abcdefghijklmnop just run -update -verbose
 
 ## Running in watch mode
 

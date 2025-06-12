@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 type Project struct {
 	ID   int
 	Name string
@@ -15,4 +17,12 @@ type QueryPair struct {
 
 type SearchResult struct {
 	ProjectID int
+}
+
+type ResultRow struct {
+	Timestamp   time.Time
+	ProjectID   int
+	QueryName   string
+	OldResults  int
+	CrntResults int
 }
