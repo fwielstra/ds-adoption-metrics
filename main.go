@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"strconv"
 	"time"
@@ -18,6 +19,9 @@ import (
 	sqlite "github.com/fwielstra/crntmetrics/sqlite"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/opts"
 
 	_ "modernc.org/sqlite"
 )
@@ -117,6 +121,9 @@ func main() {
 	}
 
 	writeTable("Historic data", allResults)
+
+	// TODO: one chart per query pair
+	writeChart("CRNT Adoption Rate", allResults)
 }
 
 func updateData(db *sql.DB) {
@@ -189,6 +196,34 @@ func writeTable(title string, results []domain.ResultRow) {
 		t.AppendRow(table.Row{row.Timestamp.Format("2006-01-02 15:04:05"), projectName, row.QueryName, row.OldResults, row.CrntResults})
 	}
 	t.Render()
+}
+
+func writeChart(title string, results []domain.ResultRow) {
+	// create a new bar instance
+	bar := charts.NewLine()
+	// set some global options like Title/Legend/ToolTip or anything else
+	bar.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
+		Title: title,
+	}))
+
+	dates := make([]string, len(results))
+	old := make([]opts.LineData, len(results))
+	crnt := make([]opts.LineData, len(results))
+	for i, res := range results {
+		dates[i] = res.Timestamp.Format("2006-01-02 15:04:05")
+		old[i] = opts.LineData{Value: res.OldResults}
+		crnt[i] = opts.LineData{Value: res.CrntResults}
+	}
+
+	// Put data into instance
+	bar.SetXAxis(dates).
+		AddSeries("Old", old).
+		AddSeries("CRNT", crnt)
+	// Where the magic happens
+	f, _ := os.Create("bar.html")
+	bar.Render(f)
+
+	log.Printf("generated chart at %s", f.Name())
 }
 
 func createDatabase() (*sql.DB, error) {
