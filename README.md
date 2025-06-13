@@ -62,7 +62,9 @@ The main logic is contained in [`main.go`](./main.go); database specific logic i
 
 The default command pulls data from the local database in `data/adoption.db` and outputs it as a table. To invoke it as developer, run:
 
-    just run
+    just run generateChart fa-icon
+
+where fa-icon is the query to generate a chart for.
 
 ### Updating data
 
@@ -70,7 +72,7 @@ Generate a Gitlab access key with the `read_api` permissions from [your settings
 
 Either set this as an environment variable called `PRIVATE_TOKEN`, or pass it when invoking the `run` command:
 
-    PRIVATE_TOKEN=abcdefghijklmnop just run -update -verbose
+    PRIVATE_TOKEN=abcdefghijklmnop just run update
 
 ## Running in watch mode
 
