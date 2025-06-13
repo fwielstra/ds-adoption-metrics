@@ -1,26 +1,16 @@
 package main
 
 import (
-	"cmp"
-	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
-	"strconv"
-	"time"
 
 	"database/sql"
 
-	"github.com/jedib0t/go-pretty/v6/table"
-
-	domain "github.com/fwielstra/crntmetrics/domain"
-	glclient "github.com/fwielstra/crntmetrics/glclient"
+	cmd "github.com/fwielstra/crntmetrics/cmd"
 	sqlite "github.com/fwielstra/crntmetrics/sqlite"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-
-	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
 
 	_ "modernc.org/sqlite"
@@ -28,58 +18,8 @@ import (
 
 const databasePath = "./data/adoption.db"
 
-var reset bool
-var verbose bool
-var update bool
-
-// the set of queries to execute if update is true.
-var queryPairs = []domain.QueryPair{
-	{
-		Name:      "primary-button",
-		ProjectID: 62, // sitecore plus
-		Old:       `class=\"btn btn-primary extension:html`,
-		Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"primary\" extension:html`,
-	},
-	{
-		Name:      "secondary-button",
-		ProjectID: 62,                                           // sitecore plus
-		Old:       `class=\""btn btn-secondary" extension:html`, // note that there is one use case where the button type is dynamic
-		Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"secondary\" extension:html`,
-	},
-	{
-		Name:      "tertiary-button",
-		ProjectID: 62, // sitecore plus
-		Old:       `class=\""btn btn-link" extension:html`,
-		Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"tertiary\" extension:html`,
-	},
-	{
-		Name:      "fa-icon",
-		ProjectID: 62, // sitecore plus
-		Old:       `"fa-icon" extension:html`,
-		Crnt:      `"<crnt-icon" -"crnt-icon-button" extension:html`,
-	},
-}
-
-type gitlabLogger struct {
-}
-
-func (c *gitlabLogger) Printf(format string, v ...interface{}) {
-	log.Printf(format, v...)
-}
-
-// We could fetch a list of projects from gitlab but lazy.
-// TODO: put in database
-var projectNames = map[int]string{
-	62: "Sitecore plus / Frontend",
-}
-
 func main() {
-	// setup flags
-	flag.BoolVar(&reset, "reset", false, "Drops tables and resets all data")
-	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging, including API calls")
-	flag.BoolVar(&update, "update", false, "Run queries and add results to database")
-	flag.Parse()
-
+	reset := false
 	// ensure database exists, trigger data reset if not.
 	if _, err := os.Stat(databasePath); err != nil {
 		reset = true
@@ -101,7 +41,6 @@ func main() {
 	}
 
 	defer db.Close()
-	log.Printf("Database opened successfully: %v\n", db)
 
 	if reset {
 		if err := sqlite.MigrateTables(db); err != nil {
@@ -109,121 +48,8 @@ func main() {
 		}
 	}
 
-	// execute queries and add results to database if update flag was passed
-	if update {
-		updateData(db)
-	}
-
-	// read all results from database
-	allResults, err := sqlite.LoadResults(db)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	writeTable("Historic data", allResults)
-
-	// TODO: one chart per query pair
-	writeChart("CRNT Adoption Rate", allResults)
-}
-
-func updateData(db *sql.DB) {
-	// read config
-	privateToken, exists := os.LookupEnv("PRIVATE_TOKEN")
-	if !exists {
-		log.Fatal("GitLab access token not set in environment variable PRIVATE_TOKEN")
-	}
-
-	// create and configure Gitlab API client
-	options := []gitlab.ClientOptionFunc{}
-	options = append(options, gitlab.WithBaseURL("https://gitlab.essent.nl/api/v4"))
-
-	if verbose {
-		options = append(options, gitlab.WithCustomLogger(&gitlabLogger{}))
-	}
-
-	client, err := gitlab.NewClient(privateToken, options...)
-
-	if err != nil {
-		log.Fatalf("Failed to create gitlab client: %v", err)
-	}
-
-	search := &glclient.Search{
-		Client:  client,
-		Verbose: verbose,
-	}
-	// use one timestamp for all results
-	now := time.Now()
-
-	// TODO: fan out concurrency and / or backoff / rate limiting.
-	// Rate limiting is also supported in the gitlab client; consider making it configurable / a CLI argument and enable it at night (when there will be few code changes)
-	results := make([]domain.ResultRow, len(queryPairs))
-	for i, qp := range queryPairs {
-
-		oldResults, err1 := search.SearchCodeByProject(qp.Old, qp.ProjectID)
-		crntResults, err2 := search.SearchCodeByProject(qp.Crnt, qp.ProjectID)
-
-		if err := cmp.Or(err1, err2); err != nil {
-			log.Fatalf("error querying code %v", err)
-		}
-
-		results[i] = domain.ResultRow{
-			Timestamp:   now,
-			ProjectID:   qp.ProjectID,
-			QueryName:   qp.Name,
-			OldResults:  len(oldResults),
-			CrntResults: len(crntResults),
-		}
-	}
-
-	if err := sqlite.SaveResults(db, results); err != nil {
-		log.Fatalf("error saving results: %v", err)
-	}
-
-	writeTable(fmt.Sprintf("Queried results at %s", now), results)
-}
-
-func writeTable(title string, results []domain.ResultRow) {
-	t := table.NewWriter()
-	t.SetOutputMirror(os.Stdout)
-	t.SetTitle(title)
-	t.AppendHeader(table.Row{"Timestamp", "Project", "Query", "Old count", "CRNT count"})
-
-	for _, row := range results {
-		projectName, exists := projectNames[row.ProjectID]
-		if !exists {
-			projectName = strconv.Itoa(row.ProjectID)
-		}
-		t.AppendRow(table.Row{row.Timestamp.Format("2006-01-02 15:04:05"), projectName, row.QueryName, row.OldResults, row.CrntResults})
-	}
-	t.Render()
-}
-
-func writeChart(title string, results []domain.ResultRow) {
-	// create a new bar instance
-	bar := charts.NewLine()
-	// set some global options like Title/Legend/ToolTip or anything else
-	bar.SetGlobalOptions(charts.WithTitleOpts(opts.Title{
-		Title: title,
-	}))
-
-	dates := make([]string, len(results))
-	old := make([]opts.LineData, len(results))
-	crnt := make([]opts.LineData, len(results))
-	for i, res := range results {
-		dates[i] = res.Timestamp.Format("2006-01-02 15:04:05")
-		old[i] = opts.LineData{Value: res.OldResults}
-		crnt[i] = opts.LineData{Value: res.CrntResults}
-	}
-
-	// Put data into instance
-	bar.SetXAxis(dates).
-		AddSeries("Old", old).
-		AddSeries("CRNT", crnt)
-	// Where the magic happens
-	f, _ := os.Create("bar.html")
-	bar.Render(f)
-
-	log.Printf("generated chart at %s", f.Name())
+	// run command
+	cmd.Execute(db)
 }
 
 func createDatabase() (*sql.DB, error) {
@@ -236,4 +62,13 @@ func createDatabase() (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// generate random data for bar chart
+func generateBarItems() []opts.BarData {
+	items := make([]opts.BarData, 0)
+	for i := 0; i < 7; i++ {
+		items = append(items, opts.BarData{Value: rand.Intn(300)})
+	}
+	return items
 }

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -42,7 +43,7 @@ func SaveResults(db *sql.DB, results []domain.ResultRow) error {
 }
 
 func LoadResults(db *sql.DB) ([]domain.ResultRow, error) {
-	rows, err := db.Query("SELECT timestamp, projectId, query, oldResults, crntResults FROM results ORDER BY timestamp ASC;")
+	rows, err := db.Query("SELECT timestamp, projectId, query, oldResults, crntResults FROM results where query='fa-icon' ORDER BY timestamp ASC;")
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +56,27 @@ func LoadResults(db *sql.DB) ([]domain.ResultRow, error) {
 			return nil, err
 		}
 		res.Timestamp = time.UnixMilli(ts)
+		results = append(results, res)
+	}
+
+	return results, nil
+}
+
+func LoadQueryResults(db *sql.DB, query string) ([]domain.ResultRow, error) {
+	rows, err := db.Query("SELECT timestamp, projectId, query, oldResults, crntResults FROM results where query=? ORDER BY timestamp ASC;", query)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.ResultRow
+	for rows.Next() {
+		var res domain.ResultRow
+		var ts int64
+		if err := rows.Scan(&ts, &res.ProjectID, &res.QueryName, &res.OldResults, &res.CrntResults); err != nil {
+			return nil, err
+		}
+		res.Timestamp = time.UnixMilli(ts)
+		fmt.Printf("%+v\n", res)
 		results = append(results, res)
 	}
 
