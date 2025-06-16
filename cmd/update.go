@@ -21,9 +21,12 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
+// if true, only runs the search queries and prints the results, does not persits the data
+var dontPersist bool
+
 // updateCmd represents the update command
 func NewUpdateCmd(db *sql.DB) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Runs the queries and adds them to the database",
 		Long:  ``,
@@ -31,6 +34,10 @@ func NewUpdateCmd(db *sql.DB) *cobra.Command {
 			updateData(db)
 		},
 	}
+
+	cmd.PersistentFlags().BoolVar(&dontPersist, "dontPersist", false, "Run queries but do not persist the results in the database")
+
+	return cmd
 }
 
 // the set of queries to execute if update is true.
@@ -102,8 +109,8 @@ func updateData(db *sql.DB) {
 	results := make([]domain.ResultRow, len(queryPairs))
 	for i, qp := range queryPairs {
 		log.Printf("Running query %s...", qp.Name)
-		oldResults, err1 := search.SearchCodeByProject(qp.Old, qp.ProjectID)
-		crntResults, err2 := search.SearchCodeByProject(qp.Crnt, qp.ProjectID)
+		oldResults, err1 := search.CountCodeByProject(qp.Old, qp.ProjectID)
+		crntResults, err2 := search.CountCodeByProject(qp.Crnt, qp.ProjectID)
 
 		if err := cmp.Or(err1, err2); err != nil {
 			log.Fatalf("error querying code %v", err)
@@ -113,13 +120,15 @@ func updateData(db *sql.DB) {
 			Timestamp:   now,
 			ProjectID:   qp.ProjectID,
 			QueryName:   qp.Name,
-			OldResults:  len(oldResults),
-			CrntResults: len(crntResults),
+			OldResults:  oldResults,
+			CrntResults: crntResults,
 		}
 	}
 
-	if err := sqlite.SaveResults(db, results); err != nil {
-		log.Fatalf("error saving results: %v", err)
+	if !dontPersist {
+		if err := sqlite.SaveResults(db, results); err != nil {
+			log.Fatalf("error saving results: %v", err)
+		}
 	}
 
 	writeTable(fmt.Sprintf("Queried results at %s", now), results)

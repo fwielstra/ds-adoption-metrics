@@ -13,6 +13,22 @@ type Search struct {
 	Verbose bool
 }
 
+func (s *Search) CountCodeByProject(query string, projectID int) (int, error) {
+	opts := &gitlab.SearchOptions{
+		ListOptions: gitlab.ListOptions{
+			PerPage: 1,
+		},
+	}
+
+	_, resp, err := s.Client.Search.BlobsByProject(projectID, query, opts)
+
+	if err != nil {
+		return -1, err
+	}
+
+	return resp.TotalItems, nil
+}
+
 // TODO: if we only want the count we don't need to query all pages if we already limit to 1 project. But we'll want to search multiple projects eventually.
 func (s *Search) SearchCodeByProject(query string, projectID int) ([]*domain.SearchResult, error) {
 	opts := &gitlab.SearchOptions{}
