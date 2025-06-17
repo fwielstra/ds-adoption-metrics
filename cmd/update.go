@@ -7,9 +7,11 @@ import (
 	"cmp"
 	"database/sql"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/fwielstra/crntmetrics/domain"
@@ -68,11 +70,23 @@ var queryPairs = []domain.QueryPair{
 	},
 }
 
+// custom logger to allow for custom date/time format
+// see https://stackoverflow.com/questions/26152993/go-logger-to-print-timestamp
+type writer struct {
+	io.Writer
+	timeFormat string
+}
+
+func (w writer) Write(b []byte) (n int, err error) {
+	return w.Writer.Write(append([]byte(time.Now().Format(w.timeFormat)), b...))
+}
+
 type gitlabLogger struct {
+	log *log.Logger
 }
 
 func (c *gitlabLogger) Printf(format string, v ...interface{}) {
-	log.Printf(format, v...)
+	c.log.Printf(format, v...)
 }
 
 // We could fetch a list of projects from gitlab but lazy.
@@ -89,7 +103,7 @@ func updateData(db *sql.DB) {
 	// create and configure Gitlab API client
 	options := []gitlab.ClientOptionFunc{}
 	options = append(options, gitlab.WithBaseURL("https://gitlab.essent.nl/api/v4"))
-	options = append(options, gitlab.WithCustomLogger(&gitlabLogger{}))
+	options = append(options, gitlab.WithCustomLogger(&gitlabLogger{log: log.New(&writer{os.Stdout, time.RFC3339Nano}, " [gitlab] ", 0)}))
 
 	client, err := gitlab.NewClient(privateToken, options...)
 
@@ -105,33 +119,84 @@ func updateData(db *sql.DB) {
 	// use one timestamp for all results
 	now := time.Now()
 
-	// TODO: fan out concurrency and / or backoff / rate limiting.
-	results := make([]domain.ResultRow, len(queryPairs))
-	for i, qp := range queryPairs {
-		log.Printf("Running query %s...", qp.Name)
-		oldResults, err1 := search.CountCodeByProject(qp.Old, qp.ProjectID)
-		crntResults, err2 := search.CountCodeByProject(qp.Crnt, qp.ProjectID)
+	worker := func(queryPairsChan <-chan domain.QueryPair, results chan<- domain.ResultRow, wg *sync.WaitGroup) {
+		defer wg.Done()
+		for qp := range queryPairsChan {
+			log.Printf("Running query %s...", qp.Name)
+			oldResults, err1 := search.CountCodeByProject(qp.Old, qp.ProjectID)
+			crntResults, err2 := search.CountCodeByProject(qp.Crnt, qp.ProjectID)
 
-		if err := cmp.Or(err1, err2); err != nil {
-			log.Fatalf("error querying code %v", err)
-		}
+			if err := cmp.Or(err1, err2); err != nil {
+				log.Fatalf("error querying code %v", err)
+			}
 
-		results[i] = domain.ResultRow{
-			Timestamp:   now,
-			ProjectID:   qp.ProjectID,
-			QueryName:   qp.Name,
-			OldResults:  oldResults,
-			CrntResults: crntResults,
+			res := domain.ResultRow{
+				Timestamp:   now,
+				ProjectID:   qp.ProjectID,
+				QueryName:   qp.Name,
+				OldResults:  oldResults,
+				CrntResults: crntResults,
+			}
+
+			results <- res
 		}
 	}
 
+	tasks := make(chan domain.QueryPair, 5)
+	results := make(chan domain.ResultRow, 5)
+	var wg sync.WaitGroup
+
+	// configure how many workers and thus simultaneous queries can run; while
+	// more workers is more faster, it also puts a higher peak load on the
+	// server.
+	// 1 worker:  0,25s user 0,39s system 35% cpu 1,811 total
+	// 3 workers: 0,26s user 0,40s system 55% cpu 1,199 total
+	// 5 workers: 0,25s user 0,38s system 73% cpu 0,871 total
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go worker(tasks, results, &wg)
+	}
+
+	go func() {
+		for _, qp := range queryPairs {
+			tasks <- qp
+		}
+		close(tasks)
+	}()
+
+	// Fan-in: Close results channel once all workers complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Read the results from the result channel and accumulate them.
+	// TODO: would it be "better" to pass the channel to the sqlite function and
+	// have it read it? Something to ponder / measure. Note that this implementation
+	// iterates over all values in the results channel, then the sqlite package
+	// iterates over it again to do inserts one at a time. Also look into bulk
+	// inserts; may need a query generator for that.
+	// Go thingy; normally when converting one slice to another you know the
+	// length, but since we're converting a channel to a slice we don't have
+	// that information while ranging over it, so we can't use the index. We do
+	// know what the length of the results will be though. However, if we pass
+	// len(queryPairs) as the 2nd argument to make(), then append to it, we'd
+	// get a slice that is len(queryPairs) of `nil` + len(queryPairs) of
+	// results. Using the three arg version of make omits that, it sets the
+	// length to 0 but the capacity to len(queryPairs).
+	resultRows := make([]domain.ResultRow, 0, len(queryPairs))
+
+	for res := range results {
+		resultRows = append(resultRows, res)
+	}
+
 	if !dontPersist {
-		if err := sqlite.SaveResults(db, results); err != nil {
+		if err := sqlite.SaveResults(db, resultRows); err != nil {
 			log.Fatalf("error saving results: %v", err)
 		}
 	}
 
-	writeTable(fmt.Sprintf("Queried results at %s", now), results)
+	writeTable(fmt.Sprintf("Queried results at %s", now), resultRows)
 }
 
 func writeTable(title string, results []domain.ResultRow) {

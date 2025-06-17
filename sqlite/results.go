@@ -24,7 +24,8 @@ func SaveResult(exe Executor, result domain.ResultRow) error {
 	return nil
 }
 
-func SaveResults(db *sql.DB, results []domain.ResultRow) error {
+// utility function to wrap a load of operations in a tx
+func WithTransaction(db *sql.DB, cb func(tx *sql.Tx) error) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -32,14 +33,23 @@ func SaveResults(db *sql.DB, results []domain.ResultRow) error {
 
 	defer tx.Rollback()
 
-	// we could do a bulk insert query but lazy / not performance critical / this is fast enough.
-	for _, res := range results {
-		if err := SaveResult(tx, res); err != nil {
-			return err
-		}
+	if err := cb(tx); err != nil {
+		return err
 	}
 
 	return tx.Commit()
+}
+
+func SaveResults(db *sql.DB, results []domain.ResultRow) error {
+	return WithTransaction(db, func(tx *sql.Tx) error {
+		// we could do a bulk insert query but lazy / not performance critical / this is fast enough.
+		for _, res := range results {
+			if err := SaveResult(tx, res); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func LoadResults(db *sql.DB) ([]domain.ResultRow, error) {
