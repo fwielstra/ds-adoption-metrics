@@ -45,16 +45,29 @@ func NewUpdateCmd(db *sql.DB) *cobra.Command {
 // the set of queries to execute if update is true.
 var queryPairs = []domain.QueryPair{
 	{
-		Name:      "primary-button",
+		Name:      "primary-button-web",
 		ProjectID: 62, // sitecore plus
 		Old:       `class=\"btn btn-primary extension:html`,
 		Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"primary\" extension:html`,
 	},
+	// Note that button searches specifically look for react-native-paper buttons.
 	{
-		Name:      "secondary-button",
+		Name:      "primary-button-app",
+		ProjectID: 3202, // apps
+		Old:       `<Button mode=\"contained\" extension:tsx`,
+		Crnt:      `<Button variant=\"primary\" extension:tsx`,
+	},
+	{
+		Name:      "secondary-button-web",
 		ProjectID: 62,                                           // sitecore plus
 		Old:       `class=\""btn btn-secondary" extension:html`, // note that there is one use case where the button type is dynamic
 		Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"secondary\" extension:html`,
+	},
+	{
+		Name:      "secondary-button-app",
+		ProjectID: 3202, // apps
+		Old:       `<Button mode=\"outlined\" extension:tsx`,
+		Crnt:      `Button variant=\"secondary\" extension:tsx`,
 	},
 	{
 		Name:      "tertiary-button",
@@ -63,10 +76,28 @@ var queryPairs = []domain.QueryPair{
 		Crnt:      `("crnt-button" | "crnt-button-alt") variant=\"tertiary\" extension:html`,
 	},
 	{
-		Name:      "fa-icon",
+		Name:      "tertiary-button-app",
+		ProjectID: 3202, // apps
+		Old:       `<Button mode=\"text\" extension:tsx`,
+		Crnt:      `Button variant=\"tertiary\" extension:tsx`,
+	},
+	{
+		Name:      "icon-web",
 		ProjectID: 62, // sitecore plus
 		Old:       `"fa-icon" extension:html`,
 		Crnt:      `"<crnt-icon" -"crnt-icon-button" extension:html`,
+	},
+	// This demonstrates the limitations; given they have the same name and
+	// mostly the same params, there's no way to discern between theme and crnt
+	// icons. Doing a loose query for the import has a lot of false positives,
+	// but an exact query won't work due to there rarely being a single import
+	// from that library.
+	// Queries for the app will also be tricky as everything is wrapped in their custom components.
+	{
+		Name:      "icon-apps",
+		ProjectID: 3202, // apps
+		Old:       `"import { Icon } from \"@essent/themes\"" extension:tsx`,
+		Crnt:      `"import { Icon } from \"@essent/crnt-react-native\"" extension:tsx`,
 	},
 }
 
@@ -91,7 +122,8 @@ func (c *gitlabLogger) Printf(format string, v ...interface{}) {
 
 // We could fetch a list of projects from gitlab but lazy.
 var projectNames = map[int]string{
-	62: "Sitecore plus / Frontend",
+	62:   "Sitecore plus / Frontend",
+	3202: "mobile-apps / Mobile Monorepo",
 }
 
 func updateData(db *sql.DB) {
