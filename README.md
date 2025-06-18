@@ -15,30 +15,30 @@ The main logic is contained in [`main.go`](./main.go); database specific logic i
 ## TODO
 
 - [x] Project setup
-- sqlite database OR logfiles
+- [x] sqlite database OR logfiles
 - [x] connect with Gitlab API
   - https://docs.gitlab.com/api/search/
 - [x] define queries
-  - just hardcode, it's not hard
-  - unique name & query
+  - [x] just hardcode, it's not hard
+  - [x] unique name & query
 - [x] extract data; number of results, output clickable links?
-- lookup project names by ID
+- [x] lookup project names by ID
 - [x] output basic stats on commandline:
-  - total results
-  - results per project
+  - [x] total results
+  - [x] results per project
 - [x] generate charts?
 - generate "adoption" output; pair of queries (old & new), compare 'oldest' results with 'newest' and calculate "conversion percentage".
 - Maintain database version, run migrations or just reset database and do a clean fetch
 - commandline commands for e.g. dropping projects cache
-  - use spf13/cobra
+  - [x] use spf13/cobra
   - command 'serve'
-  - command 'update' to fetch latest data (is that the right name?)
+  - [x] command 'update' to fetch latest data (is that the right name?)
   - optional command 'reset' to reset data
 - Properly structure application:
   - business and domain logic in top level defining client interfaces
   - [x] gitlab service layer wrapping the gitlab library (domain <-> gitlab)
   - [x] database layer wrapping database access / storage (domain <-> database)
-- ?? chart generating layer (domain -> visualisation)
+- [x] ?? chart generating layer (domain -> visualisation)
 - should we do something with context? e.g. timeout and cancellation support
 - [-] switch to using [the graphql api](https://docs.gitlab.com/api/graphql/) since we throw away a lot of data from the REST API.
   - see [graphql-explorer](https://gitlab.essent.nl/-/graphql-explorer)
